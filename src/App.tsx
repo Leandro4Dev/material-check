@@ -2,6 +2,9 @@ import { useRef, useState } from "react";
 import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
 import '../styles/globals.css';
 import { Button } from "./components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
+import { Input } from "./components/ui/input";
+import { ScanLine } from "lucide-react";
 
 
 const db = {
@@ -14,9 +17,12 @@ const db = {
     sap: '601020011.00'
   }
 }
+
+
 let codeReader: BrowserMultiFormatReader
 export function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const closeBtn = useRef<HTMLButtonElement | null>(null);
   const [code, setCode] = useState<string>("");
   const [codeF, setCodeF] = useState<string>("");
   const [lot, setLot] = useState<string>("");
@@ -25,6 +31,8 @@ export function App() {
     product: string;
     sap: string;
   }>()
+
+  const [cameraIsActive, setCameraIsActive] = useState(false)
 
   function formatLot(codigo: string) {
     if(code.length == 0) return ''
@@ -60,22 +68,25 @@ export function App() {
             if(code in db){
               setSelected(db[code])
             }
-            reset()
+            stopCamera()
+            closeBtn.current?.click()
           } else if (err && !(err instanceof NotFoundException)) {
             console.error(err);
-            reset()
+            stopCamera()
           }
         }
       );
+      setCameraIsActive(true)
     } catch (err) {
       console.error(err);
       setError("Erro ao acessar a câmera");
     }
   };
 
-  function reset(){
+  function stopCamera(){
     if(codeReader){
       codeReader.reset()
+      setCameraIsActive(false)
     }
   }
 
@@ -89,13 +100,27 @@ export function App() {
     <div className="max-w-xl mx-auto p-4 bg-white">
       <h2 className="text-xl font-semibold mb-3">Material Check</h2>
 
-      <div className="relative bg-gray-100 rounded-lg overflow-hidden">
-        <video ref={videoRef} className="w-full h-64 object-cover bg-black" playsInline />
-      </div>
-
       <div  className="flex gap-2">
-        <Button className="my-2 p-6 w-full" onClick={() => startCamera()} >Iniciar</Button>
-        <Button className="my-2 p-6 w-full" onClick={() => reset()} variant="destructive" >Parar</Button>
+        <Input type="text" className="p-6" value={codeF} onChange={e => setCodeF(e.target.value)} />
+        <Dialog>
+          <DialogTrigger asChild >
+            <Button className="w-16 p-6" onClick={() => startCamera()}> <ScanLine /></Button>
+          </DialogTrigger>
+          <DialogContent className="md:min-w-[700px] md:min-h-[400px] max-sm:h-[100dvh] max-sm:w-screen flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Code Scanner</DialogTitle>
+            </DialogHeader>
+            <div className="flex w-full h-full relative bg-gray-100 rounded-lg overflow-hidden">
+              <video ref={videoRef} className="w-full h-full object-cover bg-black" playsInline />
+              <div className="absolute w-40 h-40 border-2 border-red-500 inset-0 m-auto" >
+
+              </div>
+            </div>
+            <DialogClose asChild>
+              <Button ref={closeBtn} className="my-2 p-6 w-full" onClick={() => stopCamera()} variant="destructive" >Cancelar</Button>
+            </DialogClose>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="mt-4 font-medium p-2 text-xl text-zinc-700">
