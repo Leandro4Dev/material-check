@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
-import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
 import '../styles/globals.css';
+
+import { useEffect, useRef, useState } from "react";
+import { NotFoundException, type DecodeContinuouslyCallback } from "@zxing/library";
 import { Button } from "./components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog";
 import { Input } from "./components/ui/input";
 import { ScanLine } from "lucide-react";
+import { Label } from "./components/ui/label";
+import { Scanner } from "./Scanner";
 
 
 const db = {
@@ -18,24 +20,36 @@ const db = {
   }
 }
 
+const molds = {
+  '001':{
+    name: 'Mold. Carpete 598'
+  }
+}
 
-let codeReader: BrowserMultiFormatReader
+
+
 export function App() {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const closeBtn = useRef<HTMLButtonElement | null>(null);
-  const [code, setCode] = useState<string>("");
-  const [codeF, setCodeF] = useState<string>("");
+  const [supplierCode, setSupplierCode] = useState<string>("");
   const [lot, setLot] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<{
+  const [selectedProduct, setSelectedProduct] = useState<{
     product: string;
     sap: string;
   }>()
+  const [selectedMold, setSelectedMold] = useState<{
+    name: string;
+  }>()
 
-  const [cameraIsActive, setCameraIsActive] = useState(false)
+
+  useEffect(() => {
+    if(supplierCode in db){
+      setSelectedProduct(db[supplierCode as keyof typeof db])
+    }
+  }, [supplierCode])
+
 
   function formatLot(codigo: string) {
-    if(code.length == 0) return ''
+    if(codigo.length == 0) return ''
     const str = String(codigo);
     const parte1 = str.slice(0, 7);
     const parte2 = str.slice(7, 15);
@@ -44,103 +58,83 @@ export function App() {
   }
 
 
-  async function startCamera() {
-    clean()
-    codeReader = new BrowserMultiFormatReader();
-    try {
-      const videoInputDevices = await codeReader.listVideoInputDevices();
-      if (videoInputDevices.length === 0) {
-        setError("Nenhuma câmera encontrada");
-        return;
-      }
+  const onReadDataMatrix: DecodeContinuouslyCallback = (result, err) => {
 
-      await codeReader.decodeFromVideoDevice(
-        (videoInputDevices[videoInputDevices.length - 1] as any).deviceId,
-        videoRef.current!,
-        (result, err) => {
-          if (result) {
-            const code = result.getText().substring(14).slice(0, 9) as keyof typeof db
-            const lot = result.getText().substring(26).slice(0,18)
-            setCode(result.getText());
-            setCodeF(code);
-            setLot(lot)
-            console.log(lot)
-            if(code in db){
-              setSelected(db[code])
-            }
-            stopCamera()
-            closeBtn.current?.click()
-          } else if (err && !(err instanceof NotFoundException)) {
-            console.error(err);
-            stopCamera()
-          }
-        }
-      );
-      setCameraIsActive(true)
-    } catch (err) {
-      console.error(err);
-      setError("Erro ao acessar a câmera");
-    }
-  };
+    if (err && !(err instanceof NotFoundException)) {closeBtn.current?.click(); return}
+    if (err) return
+    if (result.getBarcodeFormat() != 5) {closeBtn.current?.click(); return}
 
-  function stopCamera(){
-    if(codeReader){
-      codeReader.reset()
-      setCameraIsActive(false)
+    const code = result.getText().substring(14).slice(0, 9) as keyof typeof db
+    const lot = result.getText().substring(26).slice(0,18)
+    setSupplierCode(code);
+    setLot(formatLot(lot))
+
+    if(code in db){
+      setSelectedProduct(db[code])
     }
+    closeBtn.current?.click()
   }
 
-  function clean(){
-    setCode('')
-    setSelected(undefined)
-  }
+  const onReadQrCode: DecodeContinuouslyCallback = (result, err) => {
 
+    if (err && !(err instanceof NotFoundException)) {closeBtn.current?.click(); return}
+    if (err) return
+    if (result.getBarcodeFormat() != 11) {closeBtn.current?.click(); return}
+
+    const code = result.getText() as keyof typeof molds
+    if(code in molds){
+      setSelectedMold(molds[code])
+    }
+    closeBtn.current?.click()
+  }
 
   return (
     <div className="max-w-xl mx-auto p-4 bg-white">
-      <h2 className="text-xl font-semibold mb-3">Material Check</h2>
+      <h2 className="text-4xl font-semibold mb-4">Material Check</h2>
 
+      <Label className="ml-1 text-lg" >Código do fornecedor</Label>
       <div  className="flex gap-2">
-        <Input type="text" className="p-6" value={codeF} onChange={e => setCodeF(e.target.value)} />
-        <Dialog>
-          <DialogTrigger asChild >
-            <Button className="w-16 p-6" onClick={() => startCamera()}> <ScanLine /></Button>
-          </DialogTrigger>
-          <DialogContent className="md:min-w-[700px] md:min-h-[400px] max-sm:h-[100dvh] max-sm:w-screen flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Code Scanner</DialogTitle>
-            </DialogHeader>
-            <div className="flex w-full h-full relative bg-gray-100 rounded-lg overflow-hidden">
-              <video ref={videoRef} className="w-full h-full object-cover bg-black" playsInline />
-              <div className="absolute w-40 h-40 border-2 border-red-500 inset-0 m-auto" >
-
-              </div>
-            </div>
-            <DialogClose asChild>
-              <Button ref={closeBtn} className="my-2 p-6 w-full" onClick={() => stopCamera()} variant="destructive" >Cancelar</Button>
-            </DialogClose>
-          </DialogContent>
-        </Dialog>
+        <Input type="text" className="p-6" value={supplierCode} onChange={e => setSupplierCode(e.target.value)} />
+        <Scanner closeBtn={closeBtn} onRead={onReadDataMatrix} >
+          <Button className="w-16 p-6"> <ScanLine /></Button>
+        </Scanner>
       </div>
 
-      <div className="mt-4 font-medium p-2 text-xl text-zinc-700">
-        <p>Descrição do Produto: <span className="font-normal" >{selected?.product}</span></p>
-        <p>Código SAP: <span className="font-normal" >{selected?.sap}</span></p>
-        <p>Código Fornecedor: <span className="font-normal" >{codeF}</span></p>
-        <p>Lote: <span className="font-normal" >{formatLot(lot)}</span></p>
+      <div className="my-4 flex flex-col gap-2">
+        <Label className="ml-1 text-lg" >Lote do Produto</Label>
+        <Input type="text" className="p-6" value={lot} onChange={e => setLot(e.target.value)} />
       </div>
 
-      <div className="mt-4">
-        <label className="block text-sm text-gray-700">Código</label>
-        <div className="mt-2 p-3 bg-gray-50 rounded-md min-h-[56px]">
-          {error ? (
-            <p className="text-red-500 text-sm">{error}</p>
-          ) : code ? (
-            <pre className="whitespace-pre-wrap break-words text-sm">{code}</pre>
-          ) : (
-            <p className="text-sm text-gray-500">Nenhum Data Matrix detectado</p>
-          )}
+      <Label className="ml-1 mt-2 text-lg" >Ferramenta</Label>
+      <div  className="flex gap-2">
+        <Input type="text" className="p-6" value={selectedMold?.name} disabled />
+        <Scanner closeBtn={closeBtn} onRead={onReadQrCode} >
+          <Button className="w-16 p-6"> <ScanLine /></Button>
+        </Scanner>
+      </div>
+
+
+      <div className="my-4 flex flex-col gap-2">
+        <Label className="ml-1 text-lg" >Maticula</Label>
+        <div className="flex gap-2" >
+          <Input type="number" className="p-6" />
+          <Button className="w-1/2 p-6" >Save</Button>
         </div>
+      </div>
+
+      <div className="mt-4 p-2 text-zinc-700">
+        <p className='mb-4 text-lg' >
+          Descrição do Produto: <br />
+          <span className="font-medium text-4xl" >{selectedProduct?.product}</span>
+        </p>
+        <p className='mb-4 text-lg' >
+          Código SAP: <br />
+          <span className="font-medium text-4xl" >{selectedProduct?.sap}</span>
+        </p>
+        <p className='mb-4 text-lg' >
+          Merramenta de Moldagem: <br />
+          <span className="font-medium text-4xl" >{selectedMold?.name}</span>
+        </p>
       </div>
 
     </div>
