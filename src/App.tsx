@@ -7,6 +7,7 @@ import { Input } from "./components/ui/input";
 import { ScanLine } from "lucide-react";
 import { Label } from "./components/ui/label";
 import { Scanner } from "./Scanner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './components/ui/alert-dialog';
 
 
 const db = {
@@ -21,8 +22,13 @@ const db = {
 }
 
 const molds = {
-  '001':{
-    name: 'Mold. Carpete 598'
+  '1':{
+    name: 'Mold. Carpete 598',
+    acceptCodes: ['311010016.00']
+  },
+  '2':{
+    name: 'Mold. Carpete 598',
+    acceptCodes: ['601020011.00']
   }
 }
 
@@ -32,12 +38,14 @@ export function App() {
   const closeBtn = useRef<HTMLButtonElement | null>(null);
   const [supplierCode, setSupplierCode] = useState<string>("");
   const [lot, setLot] = useState<string>("");
+  const [matricula, setMatricula] = useState<string>("");
   const [selectedProduct, setSelectedProduct] = useState<{
     product: string;
     sap: string;
   }>()
   const [selectedMold, setSelectedMold] = useState<{
     name: string;
+    acceptCodes: string[]
   }>()
 
 
@@ -82,15 +90,44 @@ export function App() {
     if (result.getBarcodeFormat() != 11) {closeBtn.current?.click(); return}
 
     const code = result.getText() as keyof typeof molds
+    console.log(code)
+    console.log(result.getBarcodeFormat())
     if(code in molds){
       setSelectedMold(molds[code])
     }
     closeBtn.current?.click()
   }
 
+  const openErrorAlert = useRef<HTMLButtonElement | null>(null);
+  const openSuccessAlert = useRef<HTMLButtonElement | null>(null);
+  const [error, setError] = useState('')
+  function handleSave(){
+
+    if(!selectedMold || !selectedProduct || matricula == ''){
+      setError('Preencha todos os campos e tente novamente.')
+      openErrorAlert.current?.click()
+      return
+    }
+
+    if(!selectedMold.acceptCodes.includes(selectedProduct.sap)){
+      setError('Esta ferramenta não pode produzir com esse material, acione a liderança!!')
+      openErrorAlert.current?.click()
+      return
+    }
+
+    console.log(selectedMold, selectedProduct)
+    setSupplierCode('')
+    setLot('')
+    setMatricula('')
+    setSelectedProduct(undefined)
+    setSelectedMold(undefined)
+    openSuccessAlert.current?.click()
+
+  }
+
   return (
     <div className="max-w-xl mx-auto p-4 bg-white">
-      <h2 className="text-4xl font-semibold mb-4">Material Check</h2>
+      <h2 className="text-3xl font-semibold mb-6">Registro de Matéria Prima</h2>
 
       <Label className="ml-1 text-lg" >Código do fornecedor</Label>
       <div  className="flex gap-2">
@@ -113,15 +150,6 @@ export function App() {
         </Scanner>
       </div>
 
-
-      <div className="my-4 flex flex-col gap-2">
-        <Label className="ml-1 text-lg" >Maticula</Label>
-        <div className="flex gap-2" >
-          <Input type="number" className="p-6" />
-          <Button className="w-1/2 p-6" >Save</Button>
-        </div>
-      </div>
-
       <div className="mt-4 p-2 text-zinc-700">
         <p className='mb-4 text-lg' >
           Descrição do Produto: <br />
@@ -136,6 +164,55 @@ export function App() {
           <span className="font-medium text-4xl" >{selectedMold?.name}</span>
         </p>
       </div>
+
+
+      <div className="my-4 flex flex-col gap-2">
+        <Label className="ml-1 text-lg" >Maticula</Label>
+        <div className="flex gap-2" >
+          <Input type="number" className="p-6" value={matricula} onChange={(e) => setMatricula(e.target.value)} />
+          <AlertDialog>
+            <AlertDialogTrigger asChild >
+              <Button className="w-1/2 p-6" >Save</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Atenção!</AlertDialogTitle>
+                <AlertDialogDescription className='text-lg'>
+                  Realmente deseja salvar o registro?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className='flex flex-row' >
+                <AlertDialogCancel className='flex-1'>Não</AlertDialogCancel>
+                <AlertDialogAction className='flex-1' onClick={() => handleSave()}>Sim</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+      <AlertDialog>
+        <AlertDialogTrigger ref={openErrorAlert} ></AlertDialogTrigger>
+        <AlertDialogContent className='border border-red-500' >
+          <AlertDialogHeader>
+            <AlertDialogTitle className='text-red-500' >Algo está errado... ☹</AlertDialogTitle>
+            <AlertDialogDescription className='text-lg text-red-500' >{error}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tentar Novamente</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog>
+        <AlertDialogTrigger ref={openSuccessAlert} ></AlertDialogTrigger>
+        <AlertDialogContent >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Concluído! </AlertDialogTitle>
+            <AlertDialogDescription>Salvo com sucesso!</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Ok</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
