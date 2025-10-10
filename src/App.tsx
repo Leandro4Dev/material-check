@@ -11,15 +11,24 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { supabase } from './supabase';
 
 
-type Tool = {code :string, name: string}
+export type Tool = {code :string, name: string}
 
-type Product = {
+export type Product = {
   id: number
   code: string
   sap: string
   description: string
   tool_code: string
   tool_name: string
+}
+
+export type Registry = {
+  id: number
+  created_at: Date
+  sap: string
+  lot: string
+  operator: string
+  supplier_code: string
 }
 
 
@@ -115,6 +124,7 @@ export function App() {
         created_at: new Date().toISOString(),
         sap: selectedProduct.sap,
         operator: matricula,
+        supplier_code: selectedProduct.code,
         lot
       }])
       .select()
