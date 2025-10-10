@@ -8,52 +8,49 @@ import { ScanLine } from "lucide-react";
 import { Label } from "./components/ui/label";
 import { Scanner } from "./Scanner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from './components/ui/alert-dialog';
+import { supabase } from './supabase';
 
 
-const db = {
-  '821464003': {
-    product: 'Carpete 598',
-    sap: '311010016.00'
-  },
-  '741102005': {
-    product: 'Carpete 226',
-    sap: '601020011.00'
-  }
-}
+type Tool = {code :string, name: string}
 
-const molds = {
-  '1':{
-    name: 'Mold. Carpete 598',
-    acceptCodes: ['311010016.00']
-  },
-  '2':{
-    name: 'Mold. Carpete 598',
-    acceptCodes: ['601020011.00']
-  }
+type Product = {
+  id: number
+  code: string
+  sap: string
+  description: string
+  tool_code: string
+  tool_name: string
 }
 
 
 
 export function App() {
   const closeBtn = useRef<HTMLButtonElement | null>(null);
-  const [supplierCode, setSupplierCode] = useState<string>("");
-  const [lot, setLot] = useState<string>("");
+  const [supplierCode, setSupplierCode] = useState<string>();
+  const [lot, setLot] = useState<string>();
   const [matricula, setMatricula] = useState<string>("");
-  const [selectedProduct, setSelectedProduct] = useState<{
-    product: string;
-    sap: string;
-  }>()
-  const [selectedMold, setSelectedMold] = useState<{
-    name: string;
-    acceptCodes: string[]
-  }>()
+  const [selectedProduct, setSelectedProduct] = useState<Product>()
+  const [selectedTool, setSelectedTool] = useState<Tool | undefined>()
 
+  const [products, setProducts] = useState<Product[]>([])
+  const [tools, setTools] = useState<Tool[]>([])
 
   useEffect(() => {
-    if(supplierCode in db){
-      setSelectedProduct(db[supplierCode as keyof typeof db])
-    }
-  }, [supplierCode])
+    (async () => {
+
+      const {data, error} = await supabase.from("products")
+        .select<any, Product>('*')
+
+      if(error) {
+        console.error(error.message)
+        return
+      }
+
+      setTools(data.map(item => ({ code: item.tool_code, name: item.tool_name})))
+      setProducts(data)
+
+    })()
+  }, [])
 
 
   function formatLot(codigo: string) {
@@ -72,14 +69,12 @@ export function App() {
     if (err) return
     if (result.getBarcodeFormat() != 5) {closeBtn.current?.click(); return}
 
-    const code = result.getText().substring(14).slice(0, 9) as keyof typeof db
+    const code = result.getText().substring(14).slice(0, 9)
     const lot = result.getText().substring(26).slice(0,18)
     setSupplierCode(code);
     setLot(formatLot(lot))
 
-    if(code in db){
-      setSelectedProduct(db[code])
-    }
+    setSelectedProduct(products.find(item => item.code == code))
     closeBtn.current?.click()
   }
 
@@ -89,41 +84,67 @@ export function App() {
     if (err) return
     if (result.getBarcodeFormat() != 11) {closeBtn.current?.click(); return}
 
-    const code = result.getText() as keyof typeof molds
+    const code = result.getText() as keyof typeof tools
     console.log(code)
     console.log(result.getBarcodeFormat())
-    if(code in molds){
-      setSelectedMold(molds[code])
-    }
+
+    setSelectedTool(tools.find(item => item.code == code))
     closeBtn.current?.click()
   }
 
   const openErrorAlert = useRef<HTMLButtonElement | null>(null);
   const openSuccessAlert = useRef<HTMLButtonElement | null>(null);
   const [error, setError] = useState('')
-  function handleSave(){
+  async function handleSave(){
 
-    if(!selectedMold || !selectedProduct || matricula == ''){
+    if(!selectedTool || !selectedProduct || matricula == '' || lot == ''){
       setError('Preencha todos os campos e tente novamente.')
       openErrorAlert.current?.click()
       return
     }
 
-    if(!selectedMold.acceptCodes.includes(selectedProduct.sap)){
+    if(selectedProduct.tool_name != selectedTool.name){
       setError('Esta ferramenta não pode produzir com esse material, acione a liderança!!')
       openErrorAlert.current?.click()
       return
     }
 
-    console.log(selectedMold, selectedProduct)
+
+    const {data, error} = await supabase.from('registries')
+      .insert([{
+        created_at: new Date().toISOString(),
+        sap: selectedProduct.sap,
+        operator: matricula,
+        lot
+      }])
+      .select()
+      .single()
+
+    if(error){
+      setError('Falha ao salvar o registro!')
+      if(error.details.includes('already exists')){
+        setError('Este material já foi cadastrado.')
+      }
+      // console.log(error)
+      openErrorAlert.current?.click()
+      return
+    }
+
+    console.log(data, selectedTool, selectedProduct)
+    openSuccessAlert.current?.click()
+
     setSupplierCode('')
     setLot('')
     setMatricula('')
     setSelectedProduct(undefined)
-    setSelectedMold(undefined)
-    openSuccessAlert.current?.click()
+    setSelectedTool(undefined)
 
   }
+
+  useEffect(() => {
+    console.log(supplierCode)
+    setSelectedProduct(products.find(item => item.code == supplierCode))
+  }, [supplierCode])
 
   return (
     <div className="max-w-xl mx-auto p-4 bg-white">
@@ -144,7 +165,7 @@ export function App() {
 
       <Label className="ml-1 mt-2 text-lg" >Ferramenta</Label>
       <div  className="flex gap-2">
-        <Input type="text" className="p-6" value={selectedMold?.name} disabled />
+        <Input type="text" className="p-6" value={selectedTool?.name} disabled />
         <Scanner closeBtn={closeBtn} onRead={onReadQrCode} >
           <Button className="w-16 p-6"> <ScanLine /></Button>
         </Scanner>
@@ -153,7 +174,7 @@ export function App() {
       <div className="mt-4 p-2 text-zinc-700">
         <p className='mb-4 text-lg' >
           Descrição do Produto: <br />
-          <span className="font-medium text-4xl" >{selectedProduct?.product}</span>
+          <span className="font-medium text-4xl" >{selectedProduct?.description}</span>
         </p>
         <p className='mb-4 text-lg' >
           Código SAP: <br />
@@ -161,7 +182,7 @@ export function App() {
         </p>
         <p className='mb-4 text-lg' >
           Merramenta de Moldagem: <br />
-          <span className="font-medium text-4xl" >{selectedMold?.name}</span>
+          <span className="font-medium text-4xl" >{selectedTool?.name}</span>
         </p>
       </div>
 
